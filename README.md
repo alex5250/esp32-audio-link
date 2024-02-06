@@ -11,11 +11,11 @@ The project aim is to create an simple system using two esp32 that will send raw
 ![image](https://github.com/alex5250/esp32-audio-link/assets/20460747/d91e888e-87c4-4a95-a7c2-564e89cb32d0)
 
 # Hardware in use
-esp32-LyraT-Mini two boards 
+1. esp32-LyraT-Mini two boards 
 ![image](https://github.com/alex5250/esp32-audio-link/assets/20460747/08778d7e-7823-4540-8e08-22bcdcdfd98d)
-two ac9271 WI-FI adapters
+2. two ac9271 WI-FI adapters
 ![image](https://github.com/alex5250/esp32-audio-link/assets/20460747/9e36528e-1b11-4a37-92ec-b4d6a931a7df)
-Too be continued....
+**Too be continued....**
 
 
 
