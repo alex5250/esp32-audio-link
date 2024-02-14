@@ -19,3 +19,6 @@ The project aim is to create an simple system using two esp32 that will send raw
 
 
 
+# Heat
+
+![FLIR00011](https://github.com/alex5250/esp32-audio-link/assets/20460747/eba5cde9-f688-4cee-9a1d-fb886a32e2fc)
