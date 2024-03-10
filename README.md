@@ -2,9 +2,9 @@
 The project aim is to create an simple system using two esp32 that will send raw ie802.11 frames and transmit audio. The maximum baudrate between two esp32 is around 12Mb/s with ideal signal that means we can use redundant baudrate to improve audio quality and stability.
 
 # Current tools in use
-1. esp32 idf verison 4.3 
+1. esp32 idf verison 4.3  / 4.4.7
 2. VsCode with esp32 plugin 
-3. Debian 12 
+3. Debian 12 / Manjaro Linux
 4. Arduino IDE for reciver (will change soon)
 
 
