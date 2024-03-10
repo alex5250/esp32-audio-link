@@ -5,6 +5,30 @@
 #include "freertos/FreeRTOS.h"
 #include "string.h"
 #include <stdio.h>
+#include "tcpip_adapter.h"
+#include "esp_system.h"
+
+typedef struct {
+  unsigned frame_ctrl : 16;
+  unsigned duration_id : 16;
+  uint8_t addr1[6]; /* receiver address */
+  uint8_t addr2[6]; /* sender address */
+  uint8_t addr3[6]; /* filtering address */
+  unsigned sequence_ctrl : 16;
+  uint8_t addr4[6]; /* optional */
+} wifi_ieee80211_mac_hdr_t;
+
+typedef struct {
+  wifi_ieee80211_mac_hdr_t hdr;
+  uint8_t payload[0]; /* network data ended with 4 bytes csum (CRC32) */
+} wifi_ieee80211_packet_t;
+
+static esp_err_t event_handler(void *ctx, system_event_t *event);
+static void wifi_sniffer_init(void);
+//static void wifi_sniffer_set_channel(uint8_t channel);
+//static const char *wifi_sniffer_packet_type2str(wifi_promiscuous_pkt_type_t type);
+static void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type);
+
 
 uint8_t seq;
 /*
@@ -53,6 +77,92 @@ uint8_t data_packet_template[] = {
 #define BSSID_OFFSET 16
 #define SEQNUM_OFFSET 22
 #define TOTAL_LINES 10
+
+
+extern int decode_rs_8(uint8_t *data, int *eras_pos, int no_eras, int pad);
+
+static wifi_country_t wifi_country = { .cc = "CN", .schan = 1, .nchan = 13 };  //Most recent esp32 library struct
+
+void run_on_event(void* handler_arg, esp_event_base_t base, int32_t id, void* event_data)
+{
+    return ESP_OK;
+}
+
+void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type);
+
+
+
+  
+
+
+const char *wifi_sniffer_packet_type2str(wifi_promiscuous_pkt_type_t type) {
+  switch (type) {
+    case WIFI_PKT_MGMT: return "MGMT";
+    case WIFI_PKT_DATA: return "DATA";
+    default:
+    case WIFI_PKT_MISC: return "MISC";
+  }
+}
+
+void wifi_sniffer_set_channel(uint8_t channel) {
+  esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+}
+
+void recivePacket(int size,int buffer,int channel) {
+   wifi_sniffer_set_channel(channel);
+
+
+}
+
+void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type) {
+  //if (type != WIFI_PKT_MGMT)
+  //return;
+
+
+
+  const wifi_promiscuous_pkt_t *ppkt = (wifi_promiscuous_pkt_t *)buff;
+  const wifi_ieee80211_packet_t *ipkt = (wifi_ieee80211_packet_t *)ppkt->payload;
+  const wifi_ieee80211_mac_hdr_t *hdr = &ipkt->hdr;
+
+  if (ppkt->rx_ctrl.rssi > -50) {
+    if (type == WIFI_PKT_DATA) {
+      //Serial.print("Data sent size: ");
+      int size = ppkt->rx_ctrl.sig_len;
+
+      //Serial.print("Size: ");
+      //Serial.print(size);
+      // Serial.print("  Data: ");
+
+      // Access the payload data
+       const uint8_t *payload_data = ipkt->payload;
+uint8_t* nonConstPointer = (uint8_t*)payload_data;
+      decode_rs_8(&nonConstPointer[size],0,0,223-64);
+
+      int recived_data[size];
+      char buf[size];
+      // Process the payload data as needed
+      for (int i = 0; i < size; i++) {
+        int value = (int)payload_data[i];
+        if (value > 31 && value < 126) {
+          char out_char = (char) value;
+         
+          //recived_data[i] = ;
+          //Serial.print(out_char);
+        }
+         printf("%s",buf);
+      }
+
+      //Serial.println();
+      //Serial.print("To string: ");
+
+      //intArrayToString(recived_data, size);
+    }
+  }
+}
+
+
+
+
 /**
  * @brief Sends a string over ESP32's WiFi interface using custom beacon frames.
  *
@@ -61,23 +171,15 @@ uint8_t data_packet_template[] = {
  *             Mode 1 for management packets, mode 2 for data packets.
  * @cite  https://github.com/Jeija/esp32-80211-tx/blob/master/main/main.c
  */
-void sendStringOverWiFi(char *data[], int mode) {
+void sendStringOverIEEE(char *data[]) {
 
   uint8_t packet_header[51];          // header to ieee802.11 packet
   uint8_t line = 0;                   // current line only need to calc seqnum
   uint16_t seqnum[TOTAL_LINES] = {0}; // total line is zero
   uint8_t packet_buffer[200];         // buffer for packet
-  switch (mode)                       // switch for different transmitting modes
-  {
-  case 1:
-    memcpy(packet_header, managment_packet_template,
-           sizeof(managment_packet_template)); // copy header for MGMT packet
-    break;                                     // exit switch
-  case 2:
-    memcpy(packet_header, data_packet_template,
-           sizeof(data_packet_template)); // copy header for DATA packet
-    break;                                // exit switch
-  }
+ 
+  memcpy(packet_header, data_packet_template,
+           sizeof(data_packet_template));
   memcpy(packet_buffer, packet_header,
          BEACON_SSID_OFFSET - 1); // copy the packet_headder to buffer
   packet_buffer[BEACON_SSID_OFFSET - 1] =
@@ -109,7 +211,7 @@ void sendStringOverWiFi(char *data[], int mode) {
 }
 void init_esp32_wifi_raw(void) {
   // Initialize NVS
-
+//tcpip_adapter_init();
   esp_netif_create_default_wifi_ap();
 
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -132,4 +234,7 @@ void init_esp32_wifi_raw(void) {
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
   ESP_ERROR_CHECK(esp_wifi_start());
   ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+  
+   esp_wifi_set_promiscuous(true);
+  esp_wifi_set_promiscuous_rx_cb(&wifi_sniffer_packet_handler);
 }

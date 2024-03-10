@@ -1,3 +1,5 @@
+#include <rs8.h>
+
 #include "freertos/FreeRTOS.h"
 #include "esp_wifi.h"
 #include "esp_wifi_types.h"
@@ -6,6 +8,7 @@
 #include "esp_event_loop.h"
 #include "nvs_flash.h"
 #include "driver/gpio.h"
+
 
 #define LED_GPIO_PIN 5
 #define WIFI_CHANNEL_SWITCH_INTERVAL (500)
@@ -109,7 +112,9 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type) {
       // Serial.print("  Data: ");
 
       // Access the payload data
-      const uint8_t *payload_data = ipkt->payload;
+       const uint8_t *payload_data = ipkt->payload;
+uint8_t* nonConstPointer = (uint8_t*)payload_data;
+      decode_rs_8(&nonConstPointer[size],0,0,223-64);
 
       int recived_data[size];
 

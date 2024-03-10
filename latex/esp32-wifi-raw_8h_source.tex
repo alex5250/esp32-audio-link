@@ -1,0 +1,28 @@
+\hypertarget{esp32-wifi-raw_8h_source}{}\doxysection{esp32-\/wifi-\/raw.h}
+\label{esp32-wifi-raw_8h_source}\index{components/esp32-\/wifi-\/raw/include/esp32-\/wifi-\/raw.h@{components/esp32-\/wifi-\/raw/include/esp32-\/wifi-\/raw.h}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{1 }
+\DoxyCodeLine{2 }
+\DoxyCodeLine{3 \textcolor{preprocessor}{\#ifndef ESP32\_WIFI\_RAW\_H}}
+\DoxyCodeLine{4 \textcolor{preprocessor}{\#define ESP32\_WIFI\_RAW\_H}}
+\DoxyCodeLine{5 }
+\DoxyCodeLine{6 \textcolor{preprocessor}{\#include "{}esp\_err.h"{}}}
+\DoxyCodeLine{7 \textcolor{preprocessor}{\#include "{}esp\_wifi\_types.h"{}}}
+\DoxyCodeLine{8 }
+\DoxyCodeLine{9 \textcolor{comment}{// Macro definitions}}
+\DoxyCodeLine{10 \textcolor{preprocessor}{\#define BEACON\_SSID\_OFFSET 38}}
+\DoxyCodeLine{11 \textcolor{preprocessor}{\#define SRCADDR\_OFFSET 10}}
+\DoxyCodeLine{12 \textcolor{preprocessor}{\#define BSSID\_OFFSET 16}}
+\DoxyCodeLine{13 \textcolor{preprocessor}{\#define SEQNUM\_OFFSET 22}}
+\DoxyCodeLine{14 \textcolor{preprocessor}{\#define TOTAL\_LINES 10}}
+\DoxyCodeLine{15 }
+\DoxyCodeLine{16 \textcolor{comment}{// Function prototypes}}
+\DoxyCodeLine{17 esp\_err\_t esp\_wifi\_80211\_tx(wifi\_interface\_t ifx, \textcolor{keyword}{const} \textcolor{keywordtype}{void} *buffer, \textcolor{keywordtype}{int} len,}
+\DoxyCodeLine{18                             \textcolor{keywordtype}{bool} en\_sys\_seq);}
+\DoxyCodeLine{19 \textcolor{keywordtype}{void} sendStringOverWiFi(\textcolor{keywordtype}{char} *data[], \textcolor{keywordtype}{int} mode);}
+\DoxyCodeLine{20 \textcolor{keywordtype}{void} init\_esp32\_wifi\_raw(\textcolor{keywordtype}{void});}
+\DoxyCodeLine{21 }
+\DoxyCodeLine{22 \textcolor{preprocessor}{\#endif }\textcolor{comment}{// ESP32\_WIFI\_RAW\_H}}
+
+\end{DoxyCode}
