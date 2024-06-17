@@ -1,0 +1,46 @@
+[1/10] Performing build step for 'bootloader'
+[1/1] cd /home/alex/Documents/esp32-audio-link/build/bootloader/esp-idf/esptool_py && /home/alex/.espressif/python_env/idf5.2_py3.12_env/bin/python /home/alex/esp/v5.2.2/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x0 /home/alex/Documents/esp32-audio-link/build/bootloader/bootloader.bin
+Bootloader binary size 0x5250 bytes. 0x2db0 bytes (36%) free.
+[2/8] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/main.c.obj
+FAILED: esp-idf/main/CMakeFiles/__idf_main.dir/main.c.obj 
+/home/alex/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20230928/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc -DESP_PLATFORM -DIDF_VER=\"v5.2.2-dirty\" -DSOC_MMU_PAGE_SIZE=CONFIG_MMU_PAGE_SIZE -DSOC_XTAL_FREQ_MHZ=CONFIG_XTAL_FREQ -D_GLIBCXX_HAVE_POSIX_SEMAPHORE -D_GLIBCXX_USE_POSIX_SEMAPHORE -D_GNU_SOURCE -D_POSIX_READER_WRITER_LOCKS -I/home/alex/Documents/esp32-audio-link/build/config -I/home/alex/Documents/esp32-audio-link/main -I/home/alex/esp/v5.2.2/esp-idf/components/newlib/platform_include -I/home/alex/esp/v5.2.2/esp-idf/components/freertos/config/include -I/home/alex/esp/v5.2.2/esp-idf/components/freertos/config/include/freertos -I/home/alex/esp/v5.2.2/esp-idf/components/freertos/config/xtensa/include -I/home/alex/esp/v5.2.2/esp-idf/components/freertos/FreeRTOS-Kernel/include -I/home/alex/esp/v5.2.2/esp-idf/components/freertos/FreeRTOS-Kernel/portable/xtensa/include -I/home/alex/esp/v5.2.2/esp-idf/components/freertos/FreeRTOS-Kernel/portable/xtensa/include/freertos -I/home/alex/esp/v5.2.2/esp-idf/components/freertos/esp_additions/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_hw_support/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_hw_support/include/soc -I/home/alex/esp/v5.2.2/esp-idf/components/esp_hw_support/include/soc/esp32s3 -I/home/alex/esp/v5.2.2/esp-idf/components/esp_hw_support/port/esp32s3/. -I/home/alex/esp/v5.2.2/esp-idf/components/heap/include -I/home/alex/esp/v5.2.2/esp-idf/components/log/include -I/home/alex/esp/v5.2.2/esp-idf/components/soc/include -I/home/alex/esp/v5.2.2/esp-idf/components/soc/esp32s3 -I/home/alex/esp/v5.2.2/esp-idf/components/soc/esp32s3/include -I/home/alex/esp/v5.2.2/esp-idf/components/hal/platform_port/include -I/home/alex/esp/v5.2.2/esp-idf/components/hal/esp32s3/include -I/home/alex/esp/v5.2.2/esp-idf/components/hal/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_rom/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_rom/include/esp32s3 -I/home/alex/esp/v5.2.2/esp-idf/components/esp_rom/esp32s3 -I/home/alex/esp/v5.2.2/esp-idf/components/esp_common/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_system/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_system/port/soc -I/home/alex/esp/v5.2.2/esp-idf/components/esp_system/port/include/private -I/home/alex/esp/v5.2.2/esp-idf/components/xtensa/esp32s3/include -I/home/alex/esp/v5.2.2/esp-idf/components/xtensa/include -I/home/alex/esp/v5.2.2/esp-idf/components/xtensa/deprecated_include -I/home/alex/esp/v5.2.2/esp-idf/components/lwip/include -I/home/alex/esp/v5.2.2/esp-idf/components/lwip/include/apps -I/home/alex/esp/v5.2.2/esp-idf/components/lwip/include/apps/sntp -I/home/alex/esp/v5.2.2/esp-idf/components/lwip/lwip/src/include -I/home/alex/esp/v5.2.2/esp-idf/components/lwip/port/include -I/home/alex/esp/v5.2.2/esp-idf/components/lwip/port/freertos/include -I/home/alex/esp/v5.2.2/esp-idf/components/lwip/port/esp32xx/include -I/home/alex/esp/v5.2.2/esp-idf/components/lwip/port/esp32xx/include/arch -I/home/alex/esp/v5.2.2/esp-idf/components/lwip/port/esp32xx/include/sys -I/home/alex/esp/v5.2.2/esp-idf/components/nvs_flash/include -I/home/alex/esp/v5.2.2/esp-idf/components/spi_flash/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_partition/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_wifi/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_wifi/wifi_apps/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_event/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_phy/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_phy/esp32s3/include -I/home/alex/esp/v5.2.2/esp-idf/components/esp_netif/include -mlongcalls  -fno-builtin-memcpy -fno-builtin-memset -fno-builtin-bzero -fno-builtin-stpcpy -fno-builtin-strncpy -fdiagnostics-color=always -ffunction-sections -fdata-sections -Wall -Werror=all -Wno-error=unused-function -Wno-error=unused-variable -Wno-error=unused-but-set-variable -Wno-error=deprecated-declarations -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-enum-conversion -gdwarf-4 -ggdb -Og -fno-shrink-wrap -fmacro-prefix-map=/home/alex/Documents/esp32-audio-link=. -fmacro-prefix-map=/home/alex/esp/v5.2.2/esp-idf=/IDF -fstrict-volatile-bitfields -fno-jump-tables -fno-tree-switch-conversion -std=gnu17 -Wno-old-style-declaration -MD -MT esp-idf/main/CMakeFiles/__idf_main.dir/main.c.obj -MF esp-idf/main/CMakeFiles/__idf_main.dir/main.c.obj.d -o esp-idf/main/CMakeFiles/__idf_main.dir/main.c.obj -c /home/alex/Documents/esp32-audio-link/main/main.c
+/home/alex/Documents/esp32-audio-link/main/main.c: In function 'send_esp_now_packets':
+/home/alex/Documents/esp32-audio-link/main/main.c:170:7: warning: unused variable 'ret' [-Wunused-variable]
+  170 |   int ret;
+      |       ^~~
+/home/alex/Documents/esp32-audio-link/main/main.c:169:8: warning: unused variable 'is_broadcast' [-Wunused-variable]
+  169 |   bool is_broadcast = false;
+      |        ^~~~~~~~~~~~
+/home/alex/Documents/esp32-audio-link/main/main.c:168:12: warning: unused variable 'recv_magic' [-Wunused-variable]
+  168 |   uint32_t recv_magic = 0;
+      |            ^~~~~~~~~~
+/home/alex/Documents/esp32-audio-link/main/main.c:167:12: warning: unused variable 'recv_seq' [-Wunused-variable]
+  167 |   uint16_t recv_seq = 0;
+      |            ^~~~~~~~
+/home/alex/Documents/esp32-audio-link/main/main.c:166:11: warning: unused variable 'recv_state' [-Wunused-variable]
+  166 |   uint8_t recv_state = 0;
+      |           ^~~~~~~~~~
+/home/alex/Documents/esp32-audio-link/main/main.c:165:26: warning: unused variable 'evt' [-Wunused-variable]
+  165 |   example_espnow_event_t evt;
+      |                          ^~~
+In file included from /home/alex/esp/v5.2.2/esp-idf/components/esp_wifi/include/esp_now.h:11,
+                 from /home/alex/Documents/esp32-audio-link/main/main.c:3:
+/home/alex/Documents/esp32-audio-link/main/main.c: In function 'app_main':
+/home/alex/esp/v5.2.2/esp-idf/components/esp_common/include/esp_err.h:23:25: error: 'return' with a value, in function returning void [-Werror=return-type]
+   23 | #define ESP_FAIL        -1      /*!< Generic esp_err_t code indicating failure */
+      |                         ^
+/home/alex/Documents/esp32-audio-link/main/main.c:219:16: note: in expansion of macro 'ESP_FAIL'
+  219 |         return ESP_FAIL;
+      |                ^~~~~~~~
+/home/alex/Documents/esp32-audio-link/main/main.c:184:8: note: declared here
+  184 |   void app_main() {
+      |        ^~~~~~~~
+/home/alex/Documents/esp32-audio-link/main/main.c: At top level:
+/home/alex/Documents/esp32-audio-link/main/main.c:46:13: warning: 'example_espnow_deinit' used but never defined
+   46 | static void example_espnow_deinit(example_espnow_send_param_t *send_param);
+      |             ^~~~~~~~~~~~~~~~~~~~~
+/home/alex/Documents/esp32-audio-link/main/main.c:146:13: warning: 'example_espnow_send_cb' defined but not used [-Wunused-function]
+  146 | static void example_espnow_send_cb(const uint8_t *mac_addr,
+      |             ^~~~~~~~~~~~~~~~~~~~~~
+cc1: some warnings being treated as errors
+ninja: build stopped: subcommand failed.
