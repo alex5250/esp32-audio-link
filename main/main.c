@@ -6,6 +6,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/timers.h"
+#include "esp_crc.h"
+#include "esp_log.h"
+#include "esp_now.h"
+#include "esp_random.h"
+#include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/timers.h"
 #include "nvs_flash.h"
 #include <stdio.h>
 #include <string.h>
@@ -31,84 +39,10 @@ typedef struct {
 #define ESPNOW_WIFI_MODE WIFI_MODE_AP
 #define ESPNOW_WIFI_IF ESP_IF_WIFI_AP
 #endif
-#define ESPNOW_MAXDELAY 512
 
-static const char *TAG = "espnow_example";
-#define ESPNOW_QUEUE_SIZE 6
 
-#define IS_BROADCAST_ADDR(addr)                                                \
-  (memcmp(addr, s_example_broadcast_mac, ESP_NOW_ETH_ALEN) == 0)
 
-static uint8_t s_example_broadcast_mac[ESP_NOW_ETH_ALEN] = {0xFF, 0xFF, 0xFF,
-                                                            0xFF, 0xFF, 0xFF};
-static uint16_t s_example_espnow_seq[1024] = {0, 0};
 
-static void example_espnow_deinit(example_espnow_send_param_t *send_param);
-typedef enum {
-  EXAMPLE_ESPNOW_SEND_CB,
-  EXAMPLE_ESPNOW_RECV_CB,
-} example_espnow_event_id_t;
-
-typedef struct {
-  uint8_t mac_addr[ESP_NOW_ETH_ALEN];
-  esp_now_send_status_t status;
-} example_espnow_event_send_cb_t;
-
-typedef struct {
-  uint8_t mac_addr[ESP_NOW_ETH_ALEN];
-  uint8_t *data;
-  int data_len;
-} example_espnow_event_recv_cb_t;
-
-typedef union {
-  example_espnow_event_send_cb_t send_cb;
-  example_espnow_event_recv_cb_t recv_cb;
-} example_espnow_event_info_t;
-
-/* When ESPNOW sending or receiving callback function is called, post event to
- * ESPNOW task. */
-typedef struct {
-  example_espnow_event_id_t id;
-  example_espnow_event_info_t info;
-} example_espnow_event_t;
-
-enum {
-  EXAMPLE_ESPNOW_DATA_BROADCAST,
-  EXAMPLE_ESPNOW_DATA_UNICAST,
-  EXAMPLE_ESPNOW_DATA_MAX,
-};
-
-/* User defined field of ESPNOW data in this example. */
-typedef struct {
-  uint8_t type;  // Broadcast or unicast ESPNOW data.
-  uint8_t state; // Indicate that if has received broadcast ESPNOW data or not.
-  uint16_t seq_num; // Sequence number of ESPNOW data.
-  uint16_t crc;     // CRC16 value of ESPNOW data.
-  uint32_t magic;   // Magic number which is used to determine which device to
-                  // send unicast ESPNOW data.
-  uint8_t payload[0]; // Real payload of ESPNOW data.
-} __attribute__((packed)) example_espnow_data_t;
-
-static QueueHandle_t s_example_espnow_queue;
-
-/* Prepare ESPNOW data to be sent. */
-void example_espnow_data_prepare(example_espnow_send_param_t *send_param) {
-  example_espnow_data_t *buf = (example_espnow_data_t *)send_param->buffer;
-
-  assert(send_param->len >= sizeof(example_espnow_data_t));
-
-  buf->type = IS_BROADCAST_ADDR(send_param->dest_mac)
-                  ? EXAMPLE_ESPNOW_DATA_BROADCAST
-                  : EXAMPLE_ESPNOW_DATA_UNICAST;
-  buf->state = send_param->state;
-  buf->seq_num = s_example_espnow_seq[buf->type]++;
-  buf->crc = 0;
-  buf->magic = send_param->magic;
-  /* Fill all remaining bytes after the data with random values */
-  esp_fill_random(buf->payload,
-                  send_param->len - sizeof(example_espnow_data_t));
-  buf->crc = esp_crc16_le(UINT16_MAX, (uint8_t const *)buf, send_param->len);
-}
 
 void init_nvs() {
   // Initialize NVS
