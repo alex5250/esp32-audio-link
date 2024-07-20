@@ -403,8 +403,8 @@ void speex_encode_decode_task(audio_element_handle_t raw_read, example_espnow_se
  ESP_LOGI(TAG, "Initializing send_param structure");
     memset(send_param, 0, sizeof(example_espnow_send_param_t));
     
-    ESP_LOGI(TAG, "Setting unicast to false and broadcast to true");
-    send_param->unicast = false;
+    ESP_LOGI(TAG, "Setting unicast to true and broadcast to true");
+    send_param->unicast = true;
     send_param->broadcast = true;
     
     ESP_LOGI(TAG, "Setting state to 0");
