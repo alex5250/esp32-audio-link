@@ -252,8 +252,9 @@ void send_esp_now_packets(example_espnow_send_param_t *send_param)
     ESP_LOGI(TAG, "Start sending broadcast data");
 
         /* Start sending broadcast ESPNOW data. */
-
-        if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) !=
+        int status = esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len);
+         ESP_LOGI(TAG, "esp status %d",status);
+        if (status !=
             ESP_OK)
         {
             ESP_LOGW(TAG, "Send error");
