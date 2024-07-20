@@ -4,7 +4,9 @@
     "files.associations": {
         "system_error": "c",
         "audio-link.h": "c",
-        "speex.h": "c"
+        "speex.h": "c",
+        "esp_log.h": "c",
+        "esp-now-api.h": "c"
     },
     "idf.portWin": "COM4"
 }

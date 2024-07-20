@@ -29,47 +29,277 @@
 #include "esp_peripherals.h"
 #include "periph_adc_button.h"
 #include "input_key_service.h"
+#include "esp_crc.h"
+#include "esp_log.h"
+#include "esp_now.h"
+#include "esp_random.h"
+#include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/timers.h"
+#include "nvs_flash.h"
+#include <stdio.h>
+#include <string.h>
 static const char *TAG = "esp-audio-link";
 
 #define VAD_SAMPLE_RATE_HZ 16000
-#define VAD_FRAME_LENGTH_MS 30
+#define VAD_FRAME_LENGTH_MS 10
 #define VAD_BUFFER_LENGTH (VAD_FRAME_LENGTH_MS * VAD_SAMPLE_RATE_HZ / 1000)
-#define FRAME_SIZE   3840
-#define PACKAGE_SIZE 7680
+#define FRAME_SIZE 160
+#define PACKAGE_SIZE 200
+
+/* Parameters of sending ESPNOW data. */
+typedef struct
+{
+    bool unicast;                       // Send unicast ESPNOW data.
+    bool broadcast;                     // Send broadcast ESPNOW data.
+    uint8_t state;                      // Indicate that if has received broadcast ESPNOW data or not.
+    uint32_t magic;                     // Magic number which is used to determine which device to
+                                        // send unicast ESPNOW data.
+    uint16_t count;                     // Total count of unicast ESPNOW data to be sent.
+    uint16_t delay;                     // Delay between sending two ESPNOW data, unit: ms.
+    int len;                            // Length of ESPNOW data to be sent, unit: byte.
+    uint8_t *buffer;                    // Buffer pointing to ESPNOW data.
+    uint8_t dest_mac[ESP_NOW_ETH_ALEN]; // MAC address of destination device.
+} example_espnow_send_param_t;
+/* ESPNOW can work in both station and softap mode. It is configured in
+ * menuconfig. */
+#if CONFIG_ESPNOW_WIFI_MODE_STATION
+#define ESPNOW_WIFI_MODE WIFI_MODE_STA
+#define ESPNOW_WIFI_IF ESP_IF_WIFI_STA
+#else
+#define ESPNOW_WIFI_MODE WIFI_MODE_AP
+#define ESPNOW_WIFI_IF ESP_IF_WIFI_AP
+#endif
+#define ESPNOW_MAXDELAY 512
+#define ESPNOW_QUEUE_SIZE 6
+
+#define IS_BROADCAST_ADDR(addr) \
+    (memcmp(addr, s_example_broadcast_mac, ESP_NOW_ETH_ALEN) == 0)
+
+static uint8_t s_example_broadcast_mac[ESP_NOW_ETH_ALEN] = {0xFF, 0xFF, 0xFF,
+                                                            0xFF, 0xFF, 0xFF};
+static uint16_t s_example_espnow_seq[1024] = {0, 0};
+
+static void example_espnow_deinit(example_espnow_send_param_t *send_param);
+typedef enum
+{
+    EXAMPLE_ESPNOW_SEND_CB,
+    EXAMPLE_ESPNOW_RECV_CB,
+} example_espnow_event_id_t;
+
+typedef struct
+{
+    uint8_t mac_addr[ESP_NOW_ETH_ALEN];
+    esp_now_send_status_t status;
+} example_espnow_event_send_cb_t;
+
+typedef struct
+{
+    uint8_t mac_addr[ESP_NOW_ETH_ALEN];
+    uint8_t *data;
+    int data_len;
+} example_espnow_event_recv_cb_t;
+
+typedef union
+{
+    example_espnow_event_send_cb_t send_cb;
+    example_espnow_event_recv_cb_t recv_cb;
+} example_espnow_event_info_t;
+
+/* When ESPNOW sending or receiving callback function is called, post event to
+ * ESPNOW task. */
+typedef struct
+{
+    example_espnow_event_id_t id;
+    example_espnow_event_info_t info;
+} example_espnow_event_t;
+
+enum
+{
+    EXAMPLE_ESPNOW_DATA_BROADCAST,
+    EXAMPLE_ESPNOW_DATA_UNICAST,
+    EXAMPLE_ESPNOW_DATA_MAX,
+};
+
+/* User defined field of ESPNOW data in this example. */
+typedef struct
+{
+    uint8_t type;       // Broadcast or unicast ESPNOW data.
+    uint8_t state;      // Indicate that if has received broadcast ESPNOW data or not.
+    uint16_t seq_num;   // Sequence number of ESPNOW data.
+    uint16_t crc;       // CRC16 value of ESPNOW data.
+    uint32_t magic;     // Magic number which is used to determine which device to
+                        // send unicast ESPNOW data.
+    uint8_t payload[40]; // Real payload of ESPNOW data.
+} __attribute__((packed)) example_espnow_data_t;
+
+static QueueHandle_t s_example_espnow_queue;
+
+/* Prepare ESPNOW data to be sent. */
+void example_espnow_data_prepare(example_espnow_send_param_t *send_param, uint8_t *buffer_to_send) {
+    ESP_LOGI(TAG, "Preparing ESPNOW data");
+
+    example_espnow_data_t *buf = (example_espnow_data_t *)send_param->buffer;
+    ESP_LOGI(TAG, "Buffer casted to example_espnow_data_t");
+
+    // Ensure buffer si:ze is sufficient
+    assert(send_param->len >= sizeof(example_espnow_data_t));
+    ESP_LOGI(TAG, "Buffer length is sufficient");
+
+    buf->type = IS_BROADCAST_ADDR(send_param->dest_mac) ? EXAMPLE_ESPNOW_DATA_BROADCAST : EXAMPLE_ESPNOW_DATA_UNICAST;
+    ESP_LOGI(TAG, "Set type to %d", buf->type);
+
+    buf->state = send_param->state;
+    ESP_LOGI(TAG, "Set state to %d", buf->state);
+
+    buf->seq_num = s_example_espnow_seq[buf->type]++;
+    ESP_LOGI(TAG, "Set sequence number to %d", buf->seq_num);
+
+    buf->crc = 0;
+    ESP_LOGI(TAG, "Initialized CRC to 0");
+
+    buf->magic = send_param->magic;
+    ESP_LOGI(TAG, "Set magic number to %u", buf->magic);
+
+    // Calculate the maximum payload length
+    int max_payload_len = send_param->len - sizeof(example_espnow_data_t);
+    ESP_LOGI(TAG, "Calculated maximum payload length: %d bytes", max_payload_len);
+
+    // Initialize payload with zeros
+    memset(buf->payload, 0, max_payload_len);
+    ESP_LOGI(TAG, "Payload initialized with zeros");
+
+    // Copy buffer_to_send to buf->payload
+    memcpy(buf->payload, buffer_to_send, max_payload_len);
+    ESP_LOGI(TAG, "Copied data to payload");
+
+    // Calculate the CRC of the entire buffer (including the payload)
+    buf->crc = esp_crc16_le(UINT16_MAX, (uint8_t const *)buf, send_param->len);
+    ESP_LOGI(TAG, "Calculated CRC: %u", buf->crc);
+}
+
+
+
+void init_nvs()
+{
+    // Initialize NVS
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
+        err == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        // NVS partition was truncated and needs to be erased
+        // Retry nvs_flash_init
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
+}
+
+/* WiFi should start before using ESPNOW */
+static void init_wifi_esp_now(void)
+{
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(ESPNOW_WIFI_MODE));
+    ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_set_channel(1, 0));
+
+#if CONFIG_ESPNOW_ENABLE_LONG_RANGE
+    ESP_ERROR_CHECK(esp_wifi_set_protocol(
+        ESPNOW_WIFI_IF, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G |
+                            WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR));
+#endif
+}
+
+void init_esp_now() { ESP_ERROR_CHECK(esp_now_init()); }
+
+static void example_espnow_send_cb(const uint8_t *mac_addr,
+                                   esp_now_send_status_t status)
+{
+    example_espnow_event_t evt;
+    example_espnow_event_send_cb_t *send_cb = &evt.info.send_cb;
+
+    if (mac_addr == NULL)
+    {
+        ESP_LOGE(TAG, "Send cb arg error");
+        return;
+    }
+
+    evt.id = EXAMPLE_ESPNOW_SEND_CB;
+    memcpy(send_cb->mac_addr, mac_addr, ESP_NOW_ETH_ALEN);
+    send_cb->status = status;
+
+    if (xQueueSend(s_example_espnow_queue, &evt, portMAX_DELAY) != pdTRUE)
+    {
+        ESP_LOGW(TAG, "Send send queue fail");
+    }
+}
+
+void send_esp_now_packets(example_espnow_send_param_t *send_param)
+{
+    example_espnow_event_t evt;
+    uint8_t recv_state = 0;
+    uint16_t recv_seq = 0;
+    uint32_t recv_magic = 0;
+    bool is_broadcast = false;
+    int ret;
+
+    //vTaskDelay(5000 / portTICK_PERIOD_MS);
+    ESP_LOGI(TAG, "Start sending broadcast data");
+
+        /* Start sending broadcast ESPNOW data. */
+
+        if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) !=
+            ESP_OK)
+        {
+            ESP_LOGW(TAG, "Send error");
+            // example_espnow_deinit(send_param);
+        }
+        else
+        {
+            ESP_LOGI(TAG, "ok");
+        }
+    }
+
+
 bool continue_recording = false;
-void init_sd_card() {
- ESP_LOGI(TAG, "[1.0] Initialize peripherals management");
+void init_sd_card()
+{
+    ESP_LOGI(TAG, "[1.0] Initialize peripherals management");
     esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
     esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
 
     ESP_LOGI(TAG, "[1.1] Initialize and start peripherals");
     audio_board_key_init(set);
     audio_board_sdcard_init(set, SD_MODE_1_LINE);
-
-
 }
 
 static esp_err_t input_key_service_cb(periph_service_handle_t handle, periph_service_event_t *evt, void *ctx)
 {
-             ESP_LOGD(TAG, "[ * ] input key id is %d, %d", (int)evt->data, evt->type);
+    ESP_LOGD(TAG, "[ * ] input key id is %d, %d", (int)evt->data, evt->type);
     const char *key_types[INPUT_KEY_SERVICE_ACTION_PRESS_RELEASE + 1] = {"UNKNOWN", "CLICKED", "CLICK RELEASED", "PRESSED", "PRESS RELEASED"};
-    switch ((int)evt->data) {
-        case INPUT_KEY_USER_ID_REC:
-            ESP_LOGI(TAG, "[ * ] [Rec] KEY %s", key_types[evt->type]);
-            continue_recording = !continue_recording;
-            ESP_LOGI(TAG,"updated continue recording state");
-            break;
+    switch ((int)evt->data)
+    {
+    case INPUT_KEY_USER_ID_REC:
+        ESP_LOGI(TAG, "[ * ] [Rec] KEY %s", key_types[evt->type]);
+        continue_recording = !continue_recording;
+        ESP_LOGI(TAG, "updated continue recording state");
+        break;
 
-          default:
-            ESP_LOGE(TAG, "User Key ID[%d] does not support", (int)evt->data);
-            break;
+    default:
+        ESP_LOGE(TAG, "User Key ID[%d] does not support", (int)evt->data);
+        break;
+    }
+    return ESP_OK;
 }
-return ESP_OK;
-}
 
-
-void init_adc_buttons() {
-        ESP_LOGI(TAG, "[ 1 ] Initialize peripherals");
+void init_adc_buttons()
+{
+    ESP_LOGI(TAG, "[ 1 ] Initialize peripherals");
     esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
     esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
 
@@ -89,7 +319,8 @@ void init_adc_buttons() {
     ESP_LOGW(TAG, "[ 4 ] Waiting for a button to be pressed ...");
 }
 
-void speex_encode_decode_task(audio_element_handle_t  raw_read) {
+void speex_encode_decode_task(audio_element_handle_t raw_read, example_espnow_send_param_t *send_param)
+{
     ESP_LOGI(TAG, "================ Start encode =================");
 
     short in[FRAME_SIZE];
@@ -98,15 +329,18 @@ void speex_encode_decode_task(audio_element_handle_t  raw_read) {
     float input[FRAME_SIZE];
     ESP_LOGI(TAG, "Initialized float input buffer");
 
-    char cbits[FRAME_SIZE];
+    char cbits[200];
     ESP_LOGI(TAG, "Initialized cbits buffer");
 
     int nbBytes;
     ESP_LOGI(TAG, "Initialized nbBytes variable");
+    int16_t out[FRAME_SIZE];
+    char buf[PACKAGE_SIZE];
 
     // Encoder state
     void *encoder_state = speex_encoder_init(&speex_nb_mode);
-    if (!encoder_state) {
+    if (!encoder_state)
+    {
         ESP_LOGE(TAG, "Failed to initialize encoder");
         return;
     }
@@ -119,7 +353,8 @@ void speex_encode_decode_task(audio_element_handle_t  raw_read) {
 
     // Decoder state
     void *decoder_state = speex_decoder_init(&speex_nb_mode);
-    if (!decoder_state) {
+    if (!decoder_state)
+    {
         ESP_LOGE(TAG, "Failed to initialize decoder");
         speex_encoder_destroy(encoder_state);
         return;
@@ -127,7 +362,7 @@ void speex_encode_decode_task(audio_element_handle_t  raw_read) {
     ESP_LOGI(TAG, "Decoder initialized");
 
     // Set perceptual enhancement on
-    //speex_decoder_ctl(decoder_state, SPEEX_SET_ENH, 1);
+    speex_decoder_ctl(decoder_state, SPEEX_SET_ENH, &tmp);
     ESP_LOGI(TAG, "Decoder enhancement set");
 
     // Bit-stream structures
@@ -139,129 +374,87 @@ void speex_encode_decode_task(audio_element_handle_t  raw_read) {
     ESP_LOGI(TAG, "Decoder bits initialized");
 
     // Open files
-    FILE *fout_enc = fopen("/sdcard/speex.spx", "w");
-    if (!fout_enc) {
-        ESP_LOGE(TAG, "Could not open /sdcard/speex.spx for writing");
-        speex_encoder_destroy(encoder_state);
-        speex_decoder_destroy(decoder_state);
-        return;
-    }
-    ESP_LOGI(TAG, "Opened /sdcard/speex.spx for writing");
 
-    FILE *fout_dec = fopen("/sdcard/drawpcm.wav", "w");
-    if (!fout_dec) {
-        ESP_LOGE(TAG, "Could not open /sdcard/decoded_rawpcm.wav for writing");
-        fclose(fout_enc);
-        speex_encoder_destroy(encoder_state);
-        speex_decoder_destroy(decoder_state);
-        return;
-
-    }
-     FILE *fout_raw = fopen("/sdcard/raw.wav", "w");
-    if (!fout_raw) {
-        ESP_LOGE(TAG, "Could not open /sdcard/raw.wav for writing");
-        fclose(fout_raw);
-        
-    }
-    ESP_LOGI(TAG, "Opened /sdcard/raw.wav for writing");
-
-    ESP_LOGI(TAG, "================ Encoding and Decoding loop start =================");
 
     // Encoding and Decoding loop
-    while (1) {
+    while (1)
+    {
         // Read raw audio data
         raw_stream_read(raw_read, (char *)in, FRAME_SIZE * sizeof(short));
-
-            if (fwrite(in, sizeof(int16_t), FRAME_SIZE, fout_raw) != FRAME_SIZE) {
-            ESP_LOGE(TAG, "Failed to raw decoded data to file");
-            break;
-        }
-
-        
         ESP_LOGI(TAG, "Read raw audio data");
 
         // Check for end of input (optional based on raw_stream_read behavior)
-        if (feof(stdin)) break;
+        if (feof(stdin))
+            break;
 
-        // Convert to float for Speex encoder
-        for (int i = 0; i < FRAME_SIZE; i++) {
-            input[i] = in[i];
-        }
         ESP_LOGI(TAG, "Converted input to float for Speex encoder");
 
         // Encode audio data
         speex_bits_reset(&enc_bits);
         ESP_LOGI(TAG, "Reset encoder bits");
 
-        speex_encode(encoder_state, in, &enc_bits);
+        speex_encode(encoder_state, input, &enc_bits);
         ESP_LOGI(TAG, "Encoded audio data");
 
         // Write encoded bits to buffer
-        nbBytes = speex_bits_write(&enc_bits, cbits, sizeof(cbits));
+        nbBytes = speex_bits_write(&enc_bits, in, sizeof(in));
         ESP_LOGI(TAG, "Wrote encoded bits to buffer: %d bytes", nbBytes);
-
-        if (fwrite(cbits, sizeof(int16_t), nbBytes, fout_enc) != nbBytes) {
-            ESP_LOGE(TAG, "Failed to write encoded data to file");
-            break;
-        }
-        ESP_LOGI(TAG, "Wrote encoded data to file");
-
-        // Decode the same data immediately
-        //speex_bits_reset(&dec_bits);
-        ESP_LOGI(TAG, "Reset decoder bits");
-
-        speex_bits_read_from(&dec_bits, cbits, nbBytes);
-        ESP_LOGI(TAG, "Read encoded bits into decoder bits");
-
-        int16_t out[FRAME_SIZE];
-        if (speex_decode_int(decoder_state, &dec_bits, out) != 0) {
-            ESP_LOGE(TAG, "Failed to decode data");
-            break;
-        }
-        ESP_LOGI(TAG, "Decoded audio data");
-
-
-     
-
-        // Write decoded data to file
-        if (fwrite(out, sizeof(int16_t), FRAME_SIZE, fout_dec) != FRAME_SIZE) {
-            ESP_LOGE(TAG, "Failed to write decoded data to file");
-            break;
-        }
-        ESP_LOGI(TAG, "Wrote decoded data to file");
-        
-        // Optional: Break condition or sleep to prevent infinite looping
-        if (continue_recording) break;
+ ESP_LOGI(TAG, "Initializing send_param structure");
+    memset(send_param, 0, sizeof(example_espnow_send_param_t));
+    
+    ESP_LOGI(TAG, "Setting unicast to false and broadcast to true");
+    send_param->unicast = false;
+    send_param->broadcast = true;
+    
+    ESP_LOGI(TAG, "Setting state to 0");
+    send_param->state = 0;
+    
+    ESP_LOGI(TAG, "Generating random magic number");
+    send_param->magic = esp_random();
+    
+    ESP_LOGI(TAG, "Setting count to %d", CONFIG_ESPNOW_SEND_COUNT);
+    send_param->count = CONFIG_ESPNOW_SEND_COUNT;
+    
+    ESP_LOGI(TAG, "Setting delay to %d", CONFIG_ESPNOW_SEND_DELAY);
+    send_param->delay = CONFIG_ESPNOW_SEND_DELAY;
+    
+    ESP_LOGI(TAG, "Setting length to %d", CONFIG_ESPNOW_SEND_LEN);
+    send_param->len = CONFIG_ESPNOW_SEND_LEN;
+    
+    ESP_LOGI(TAG, "Allocating buffer of size %d bytes", CONFIG_ESPNOW_SEND_LEN);
+    send_param->buffer = malloc(CONFIG_ESPNOW_SEND_LEN);
+    
+    if (send_param->buffer == NULL)
+    {
+        ESP_LOGE(TAG, "Malloc send buffer failed");
+        free(send_param);
+        vSemaphoreDelete(s_example_espnow_queue);
+        // esp_now_deinit();
+        // return ESP_FAIL;
+        return;  // Ensure you exit the function to prevent further issues.
     }
+    
+    ESP_LOGI(TAG, "Copying destination MAC address");
+    memcpy(send_param->dest_mac, s_example_broadcast_mac, ESP_NOW_ETH_ALEN);
+    
+    ESP_LOGI(TAG, "Preparing ESPNOW data");
+    example_espnow_data_prepare(send_param, nbBytes);
+    
+    ESP_LOGI(TAG, "Sending ESPNOW packets");
+    send_esp_now_packets(send_param);
 
-    ESP_LOGI(TAG, "================ Encoding and Decoding loop end =================");
-
-    // Destroy encoder and decoder states
-    speex_encoder_destroy(encoder_state);
-    ESP_LOGI(TAG, "Destroyed encoder state");
-
-    speex_decoder_destroy(decoder_state);
-    ESP_LOGI(TAG, "Destroyed decoder state");
-
-    // Destroy bit-stream structures
-    speex_bits_destroy(&enc_bits);
-    ESP_LOGI(TAG, "Destroyed encoder bits");
-
-    speex_bits_destroy(&dec_bits);
-    ESP_LOGI(TAG, "Destroyed decoder bits");
-
-    // Close files
-    fclose(fout_enc);
-    ESP_LOGI(TAG, "Closed encoded file");
-
-    fclose(fout_dec);
-    ESP_LOGI(TAG, "Closed decoded file");
-
-    fclose(fout_raw);
-
-    ESP_LOGI(TAG, "Encode and decode done");
+    // Optional: Break condition or sleep to prevent infinite looping
+    if (continue_recording)
+    {
+        ESP_LOGI(TAG, "Recording stopped, breaking loop");
+        break;
+    }
+    }
+   
+   
 }
-    void start_audio_link()
+
+void start_audio_link(void *pvParameters )
 {
     esp_log_level_set("*", ESP_LOG_WARN);
     esp_log_level_set(TAG, ESP_LOG_INFO);
@@ -286,7 +479,7 @@ void speex_encode_decode_task(audio_element_handle_t  raw_read) {
     rsp_filter_cfg_t rsp_cfg = DEFAULT_RESAMPLE_FILTER_CONFIG();
     rsp_cfg.src_rate = 16000;
     rsp_cfg.src_ch = 1;
-    rsp_cfg.dest_rate = VAD_SAMPLE_RATE_HZ/2;
+    rsp_cfg.dest_rate = VAD_SAMPLE_RATE_HZ / 2;
     rsp_cfg.dest_ch = 1;
     filter = rsp_filter_init(&rsp_cfg);
 
@@ -308,23 +501,56 @@ void speex_encode_decode_task(audio_element_handle_t  raw_read) {
 
     ESP_LOGI(TAG, "[ 5 ] Start audio_pipeline");
     audio_pipeline_run(pipeline);
-
-
-
     ESP_LOGI(TAG, "[ 6 ] Inint speex ");
 
-  
+    example_espnow_send_param_t *send_param;
 
-     speex_encode_decode_task(raw_read);
+    init_nvs();
+
+    s_example_espnow_queue =
+        xQueueCreate(ESPNOW_QUEUE_SIZE, sizeof(example_espnow_event_t));
+    if (s_example_espnow_queue == NULL)
+    {
+        ESP_LOGE(TAG, "Create mutex fail");
+    }
+    init_wifi_esp_now();
+    init_esp_now();
+    ESP_ERROR_CHECK(esp_now_set_pmk((uint8_t *)CONFIG_ESPNOW_PMK));
+
+    esp_now_peer_info_t *peer = malloc(sizeof(esp_now_peer_info_t));
+    if (peer == NULL)
+    {
+        ESP_LOGE(TAG, "Malloc peer information fail");
+        vSemaphoreDelete(s_example_espnow_queue);
+        // esp_now_deinit();
+        // return ESP_FAIL;
+    }
+
+    memset(peer, 0, sizeof(esp_now_peer_info_t));
+    peer->channel = CONFIG_ESPNOW_CHANNEL;
+    peer->ifidx = ESPNOW_WIFI_IF;
+    peer->encrypt = false;
+    memcpy(peer->peer_addr, s_example_broadcast_mac, ESP_NOW_ETH_ALEN);
+    ESP_ERROR_CHECK(esp_now_add_peer(peer));
+    free(peer);
+
+    /* Initialize sending parameters. */
+    send_param = malloc(sizeof(example_espnow_send_param_t));
+    if (send_param == NULL)
+    {
+        ESP_LOGE(TAG, "Malloc send parameter fail");
+        vSemaphoreDelete(s_example_espnow_queue);
+        // esp_now_deinit();
+        // return ESP_FAIL;
+    }
+
+    // send_data();
+
+    speex_encode_decode_task(raw_read, send_param);
     ESP_LOGI(TAG, "[ 8 ] Stop audio_pipeline and release all resources");
     audio_pipeline_stop(pipeline);
     audio_pipeline_wait_for_stop(pipeline);
     audio_pipeline_terminate(pipeline);
-
-
-
-
-
 
     /* Terminate the pipeline before removing the listener */
     audio_pipeline_remove_listener(pipeline);
@@ -339,9 +565,8 @@ void speex_encode_decode_task(audio_element_handle_t  raw_read) {
     audio_element_deinit(filter);
     audio_element_deinit(raw_read);
 
-   // speex_decode_task();
-
+    // speex_decode_task();
 }
 
-
-
+/*
+ */

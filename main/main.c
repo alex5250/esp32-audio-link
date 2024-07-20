@@ -7,5 +7,6 @@ void app_main(void)
 
     init_adc_buttons();
     init_sd_card();
-   start_audio_link();
+
+   xTaskCreate(start_audio_link, "audio-link", 32768, NULL, 1, NULL);
 }

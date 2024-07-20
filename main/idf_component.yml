@@ -1,5 +1,6 @@
 ## IDF Component Manager Manifest File
 dependencies:
+  espressif/esp-now: "^2.5.1"
   espressif/esp-dsp: "^1.4.12"
   espressif/esp_audio_codec: "^2.0.0"
 

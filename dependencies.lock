@@ -1,9 +1,19 @@
 dependencies:
+  espressif/cmake_utilities:
+    component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
+    source:
+      type: service
+    version: 0.5.3
   espressif/esp-dsp:
     component_hash: 3e7bbd487f1357a1d4944d0c85966d049501ea281b8a4c7f93f7cfedd5b7f23d
     source:
       type: service
     version: 1.4.12
+  espressif/esp-now:
+    component_hash: 5ad630168194ad0134b28194852dda1616a1231680ef477cc6e0fc5eb5fc6233
+    source:
+      type: service
+    version: 2.5.1
   espressif/esp_audio_codec:
     component_hash: 79afebebc48506e3dcb8c5e1fd082bb483f913dbe6ebed0996355fc2ab2a3d6a
     source:
@@ -14,6 +24,6 @@ dependencies:
     source:
       type: idf
     version: 4.4.4
-manifest_hash: b394a6eea409699ad8148edfc29756b0eab31c3ffc7457fb0ae999e32540b160
+manifest_hash: d1d2c230258cb3e9fed51dbbcc67a43a47e32d28fc15d4b95173e7a8b9575c52
 target: esp32
 version: 1.0.0
