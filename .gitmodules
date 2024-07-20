@@ -1,0 +1,3 @@
+[submodule "components/esp-idf-speex/esp-idf-speex"]
+	path = components/esp-idf-speex
+	url = https://github.com/UncleRus/esp-idf-speex
